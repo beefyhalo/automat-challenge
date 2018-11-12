@@ -10,19 +10,17 @@ import org.http4s.client.blaze._
 import org.scalatest.{Matchers, WordSpec}
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class Queries[F[_]: Concurrent: Par](client: Client[F]) {
+/* The Challenge Implementation */
+class AutomatChallenge[F[_]: Concurrent: Par](client: Client[F]) {
 
-  def top: F[List[StoryId]] =
-    client.expect("https://hacker-news.firebaseio.com/v0/topstories.json")(jsonOf[F, List[StoryId]])
+  def commentsForStory(story: Story): F[List[Comment]] =
+    story.kids.toList.parFlatTraverse(cid => item[Comment](cid.value).map(_.toList))
 
   def item[A: Decoder](id: Int): F[Option[A]] =
     client
       .expect(s"https://hacker-news.firebaseio.com/v0/item/$id.json")(jsonOf[F, A])
       .map(Option(_))
       .recover { case _ => None }
-
-  def commentsForStory(story: Story): F[List[Comment]] =
-    story.kids.toList.parFlatTraverse(cid => item[Comment](cid.value).map(_.toList))
 
   def results(storyCount: Int, commentCount: Int): F[List[Result]] =
     storiesWithComments(storyCount).compile.toList
@@ -45,35 +43,41 @@ class Queries[F[_]: Concurrent: Par](client: Client[F]) {
       .take(storyCount.toLong)
       .evalMap(story => commentsForStory(story).map(StoryWithComments(story, _)))
 
+  def top: F[List[StoryId]] =
+    client.expect("https://hacker-news.firebaseio.com/v0/topstories.json")(jsonOf[F, List[StoryId]])
+
   private def groupSize[A, B](as: List[A])(groupBy: A => B) = as.groupBy(groupBy).map { case (k, v) => (k, v.size) }
 }
 
+/* The Challenge Spec */
 class AutomatChallengeSpec extends WordSpec with Matchers {
   implicit val cs: ContextShift[IO] = IO.contextShift(global)
 
-  "get comments" in {
+  "should get comments" in {
     val n       = 30
-    val results = BlazeClientBuilder[IO](global).stream.flatMap(new Queries[IO](_).storiesWithComments(n)).compile.toVector.unsafeRunSync
+    val results = BlazeClientBuilder[IO](global).stream.flatMap(new AutomatChallenge(_).storiesWithComments(n)).compile.toVector.unsafeRunSync
     println(results)
     results != Nil
   }
 
-  "get results" in {
+  "should get results" in {
     val storyCount   = 30
     val commentCount = 10
-    val results      = BlazeClientBuilder[IO](global).resource.use(new Queries[IO](_).results(storyCount, commentCount)).unsafeRunSync
+    val results      = BlazeClientBuilder[IO](global).resource.use(new AutomatChallenge(_).results(storyCount, commentCount)).unsafeRunSync
 
     results.foreach(result =>
       println(s"""
         Story ${result.story.title} | ${result.commenters
         .map(commenter => s"${commenter.name} (${commenter.storyCount} for story - ${commenter.totalCount} total)")
-        .mkString("|")}
+        .mkString(" | ")}
     """))
 
     results.size shouldEqual storyCount
     results.foreach(_.commenters.size should be <= commentCount)
   }
 }
+
+/* The Model */
 
 final case class CommentId(val value: Int) extends AnyVal
 final case class StoryId(val value: Int)   extends AnyVal
@@ -87,6 +91,7 @@ final case class StoryWithComments(story: Story, comments: List[Comment])
 object CommentId {
   implicit val CommentIdDecoder: Decoder[CommentId] = Decoder[Int].map(CommentId(_))
 }
+
 object StoryId {
   implicit val StoryIdDecoder: Decoder[StoryId] = Decoder[Int].map(StoryId(_))
 }
