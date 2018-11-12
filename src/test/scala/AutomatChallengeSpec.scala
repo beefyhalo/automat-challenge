@@ -29,7 +29,7 @@ class AutomatChallenge[F[_]: Concurrent: Par](client: Client[F]) {
         storiesWithComments.map {
           case StoryWithComments(story, comments) =>
             val storyCounts = groupSize(comments)(_.by)
-            val commenters  = storyCounts.map { case (name, storyCount) => Commenter(name, storyCount, totalCounts(name)) }.toList.sortBy(_.storyCount)
+            val commenters  = storyCounts.map { case (name, storyCount) => Commenter(name, storyCount, totalCounts(name)) }.toList.sortBy(_.storyCount)(Ordering[Int].reverse)
             Result(story, commenters.take(commentCount))
         }
       }
