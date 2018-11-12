@@ -22,15 +22,18 @@ class AutomatChallenge[F[_]: Concurrent: Par](client: Client[F]) {
       .map(Option(_))
       .recover { case _ => None }
 
-  def results(storyCount: Int, commentCount: Int): F[List[Result]] =
+  def results(storyCount: Int, commenterCount: Int): F[List[Result]] =
     storiesWithComments(storyCount).compile.toList
       .map { storiesWithComments =>
         val totalCounts = groupSize(storiesWithComments >>= (_.comments))(_.by)
         storiesWithComments.map {
           case StoryWithComments(story, comments) =>
             val storyCounts = groupSize(comments)(_.by)
-            val commenters  = storyCounts.map { case (name, storyCount) => Commenter(name, storyCount, totalCounts(name)) }.toList.sortBy(_.storyCount)(Ordering[Int].reverse)
-            Result(story, commenters.take(commentCount))
+            val commenters = storyCounts
+              .map { case (name, storyCount) => Commenter(name, storyCount, totalCounts(name)) }
+              .toList
+              .sortBy(_.storyCount)(Ordering[Int].reverse)
+            Result(story, commenters.take(commenterCount))
         }
       }
 
@@ -57,13 +60,14 @@ class AutomatChallengeSpec extends WordSpec with Matchers {
     val n       = 30
     val results = BlazeClientBuilder[IO](global).stream.flatMap(new AutomatChallenge(_).storiesWithComments(n)).compile.toVector.unsafeRunSync
     println(results)
+    println("Items: " + results.size + results.flatMap(_.comments).size)
     results != Nil
   }
 
   "should get results" in {
-    val storyCount   = 30
-    val commentCount = 10
-    val results      = BlazeClientBuilder[IO](global).resource.use(new AutomatChallenge(_).results(storyCount, commentCount)).unsafeRunSync
+    val storyCount     = 30
+    val commenterCount = 10
+    val results        = BlazeClientBuilder[IO](global).resource.use(new AutomatChallenge(_).results(storyCount, commenterCount)).unsafeRunSync
 
     results.foreach(result =>
       println(s"""
@@ -73,7 +77,7 @@ class AutomatChallengeSpec extends WordSpec with Matchers {
     """))
 
     results.size shouldEqual storyCount
-    results.foreach(_.commenters.size should be <= commentCount)
+    results.foreach(_.commenters.size should be <= commenterCount)
   }
 }
 
