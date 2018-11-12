@@ -14,7 +14,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 class AutomatChallenge[F[_]: Concurrent: Par](client: Client[F]) {
 
   def commentsForStory(story: Story): F[List[Comment]] =
-    story.kids.toList.parFlatTraverse(cid => item[Comment](cid.value).map(_.toList))
+    story.kids.parFlatTraverse(cid => item[Comment](cid.value).map(_.toList))
 
   def item[A: Decoder](id: Int): F[Option[A]] =
     client
