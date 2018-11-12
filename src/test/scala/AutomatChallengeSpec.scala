@@ -60,7 +60,7 @@ class AutomatChallengeSpec extends WordSpec with Matchers {
     val n       = 30
     val results = BlazeClientBuilder[IO](global).stream.flatMap(new AutomatChallenge(_).storiesWithComments(n)).compile.toVector.unsafeRunSync
     println(results)
-    println("Items: " + results.size + results.flatMap(_.comments).size)
+    println(s"Items: ${results.size + results.flatMap(_.comments).size}")
     results != Nil
   }
 
